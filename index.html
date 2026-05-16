@@ -1,14 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Map Viewer</title>
-    <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; }
-    </style>
-  </head>
-  <body>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+	<meta charset="UTF-8"/>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+	<title>Map Viewer</title>
+	<link rel="stylesheet" href="/src/style.css"/>
+	<style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #1e1e1e;
+            color: #eee;
+            color-scheme: dark;
+        }
+	</style>
+</head>
+<body>
+<div id="toolbar">
+	<button id="toggle-list">toggle maps</button>
+	<button id="open-folder">Open folder</button>
+</div>
+<div id="map-sidebar"></div>
+<script type="module" src="/src/main.ts"></script>
+</body>
 </html>

@@ -4,12 +4,82 @@
 import { get, set } from 'idb-keyval';
 
 const HANDLE_KEY = 'folder';
+// Subdirectory whose files are listed in the sidebar.
+const MAPS_PATH = ['terra', 'data', 'maps'];
 
-// Walk the directory and log its entries to the console.
-async function printContents(dir: FileSystemDirectoryHandle): Promise<void> {
-	console.log(`Contents of "${dir.name}":`);
+interface MapFile {
+	path: string;
+	handle: FileSystemFileHandle;
+}
+
+// Navigate from the chosen root down to the maps directory.
+async function getMapsDir(
+	root: FileSystemDirectoryHandle,
+): Promise<FileSystemDirectoryHandle> {
+	let dir = root;
+	for (const part of MAPS_PATH) {
+		dir = await dir.getDirectoryHandle(part);
+	}
+	return dir;
+}
+
+// Recursively collect every file under a directory, with paths relative to it.
+async function collectFiles(
+	dir: FileSystemDirectoryHandle,
+	prefix = '',
+): Promise<MapFile[]> {
+	const files: MapFile[] = [];
 	for await (const [name, handle] of dir.entries()) {
-		console.log(`  ${handle.kind === 'directory' ? '[dir]' : '[file]'} ${name}`);
+		const path = prefix ? `${prefix}/${name}` : name;
+		if (handle.kind === 'directory') {
+			files.push(
+				...(await collectFiles(handle as FileSystemDirectoryHandle, path)),
+			);
+		} else {
+			files.push({ path, handle: handle as FileSystemFileHandle });
+		}
+	}
+	files.sort((a, b) => a.path.localeCompare(b.path));
+	return files;
+}
+
+// Render the collected files as clickable rows in the existing sidebar.
+function renderSidebar(files: MapFile[]): void {
+	const sidebar = document.getElementById('map-sidebar');
+	if (!sidebar) return;
+	sidebar.replaceChildren();
+
+	if (files.length === 0) {
+		sidebar.textContent = 'No files found.';
+		return;
+	}
+
+	for (const file of files) {
+		const item = document.createElement('div');
+		item.className = 'map-item';
+		item.textContent = file.path;
+		item.addEventListener('click', () => {
+			void selectFile(file);
+		});
+		sidebar.appendChild(item);
+	}
+}
+
+// Clicking a file in the sidebar logs its handle for now.
+async function selectFile(file: MapFile): Promise<void> {
+	console.log('Selected map file:', file.path, file.handle);
+}
+
+// Load the maps directory for a root handle and populate the sidebar.
+async function loadMaps(root: FileSystemDirectoryHandle): Promise<void> {
+	try {
+		const mapsDir = await getMapsDir(root);
+		const files = await collectFiles(mapsDir);
+		console.log(`Found ${files.length} file(s) under ${MAPS_PATH.join('/')}/`);
+		renderSidebar(files);
+	} catch (err) {
+		console.error(`Could not read ${MAPS_PATH.join('/')}/:`, err);
+		renderSidebar([]);
 	}
 }
 
@@ -17,7 +87,7 @@ async function pickFolder(): Promise<void> {
 	try {
 		const handle = await window.showDirectoryPicker();
 		await set(HANDLE_KEY, handle);
-		await printContents(handle);
+		await loadMaps(handle);
 	} catch (err) {
 		if ((err as DOMException).name !== 'AbortError') console.error(err);
 	}
@@ -28,7 +98,7 @@ async function restoreFolder(): Promise<void> {
 		const handle = await get<FileSystemDirectoryHandle>(HANDLE_KEY);
 		if (!handle) return;
 		if ((await handle.queryPermission({ mode: 'read' })) === 'granted') {
-			await printContents(handle);
+			await loadMaps(handle);
 		} else {
 			console.log('Stored folder needs permission — click "Open folder".');
 		}
@@ -38,14 +108,17 @@ async function restoreFolder(): Promise<void> {
 }
 
 export function setupFolderPicker(): void {
-	const button = document.createElement('button');
-	button.textContent = 'Open folder';
-	button.style.cssText =
-		'position:fixed;top:8px;left:8px;z-index:10;padding:6px 12px;';
-	button.addEventListener('click', () => {
+	const openButton = document.getElementById('open-folder');
+	openButton?.addEventListener('click', () => {
 		void pickFolder();
 	});
-	document.body.appendChild(button);
+
+	const toggle = document.getElementById('toggle-list');
+	toggle?.addEventListener('click', () => {
+		const sidebar = document.getElementById('map-sidebar');
+		if (!sidebar) return;
+		sidebar.classList.toggle('hidden');
+	});
 
 	// Try to restore a folder chosen in a previous session.
 	void restoreFolder();
