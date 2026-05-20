@@ -2,6 +2,7 @@
 // idb-keyval) so the same folder can be reused across page reloads.
 
 import { get, set } from 'idb-keyval';
+import { loadMap } from './map-loader';
 
 const HANDLE_KEY = 'folder';
 // Subdirectory whose files are listed in the sidebar.
@@ -65,9 +66,13 @@ function renderSidebar(files: MapFile[]): void {
 	}
 }
 
-// Clicking a file in the sidebar logs its handle for now.
 async function selectFile(file: MapFile): Promise<void> {
-	console.log('Selected map file:', file.path, file.handle);
+	try {
+		const text = await (await file.handle.getFile()).text();
+		loadMap(JSON.parse(text))
+	} catch (err) {
+		console.error(`Could not load map ${file.path}`, err);
+	}
 }
 
 // Load the maps directory for a root handle and populate the sidebar.
