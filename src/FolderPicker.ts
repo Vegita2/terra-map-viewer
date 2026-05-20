@@ -2,11 +2,15 @@
 // idb-keyval) so the same folder can be reused across page reloads.
 
 import { get, set } from 'idb-keyval';
-import { loadMap } from './map-loader';
+import { loadMap } from './mapLoader';
 
 const HANDLE_KEY = 'folder';
+
 // Subdirectory whose files are listed in the sidebar.
 const MAPS_PATH = ['terra', 'data', 'maps'];
+
+// Map auto-loaded on page load for quick testing (dotted path, no extension).
+const AUTO_LOAD_MAP = '';
 
 interface MapFile {
 	path: string;
@@ -82,6 +86,13 @@ async function loadMaps(root: FileSystemDirectoryHandle): Promise<void> {
 		const files = await collectFiles(mapsDir);
 		console.log(`Found ${files.length} file(s) under ${MAPS_PATH.join('/')}/`);
 		renderSidebar(files);
+
+		// Auto-load a specific map for quick iteration during development.
+		const auto = files.find(
+			(f) => f.path.replace(/\.[^.]+$/, '').replace(/\//g, '.') === AUTO_LOAD_MAP,
+		);
+		if (auto) void selectFile(auto);
+		else console.warn(`Auto-load map not found: ${AUTO_LOAD_MAP}`);
 	} catch (err) {
 		console.error(`Could not read ${MAPS_PATH.join('/')}/:`, err);
 		renderSidebar([]);

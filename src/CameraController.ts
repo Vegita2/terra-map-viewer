@@ -13,7 +13,7 @@ export class CameraController {
 	private readonly domElement: HTMLElement;
 
 	/** Base movement speed in units per second. */
-	speed = 3;
+	speed = 6;
 	/** Multiplier applied while Shift is held. */
 	sprintMultiplier = 4;
 	/** Look sensitivity in radians per pixel of mouse movement. */

@@ -4,7 +4,7 @@ import { setupFolderPicker } from './FolderPicker';
 
 setupFolderPicker();
 
-const scene = new THREE.Scene();
+export const scene = new THREE.Scene();
 
 const camera = new THREE.PerspectiveCamera(
 	75,
@@ -12,7 +12,11 @@ const camera = new THREE.PerspectiveCamera(
 	0.1,
 	1000,
 );
-camera.position.z = 3;
+// Position above and south of the map area, angled down toward the origin
+// so the floor plane and axis gizmo are visible at startup. The controller
+// reads the camera's quaternion in its constructor, so lookAt happens first.
+camera.position.set(15, 25, 40);
+camera.lookAt(15, 0, 15);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -21,11 +25,16 @@ document.body.appendChild(renderer.domElement);
 
 const controls = new CameraController(camera, renderer.domElement);
 
-const cube = new THREE.Mesh(
-	new THREE.BoxGeometry(1, 1, 1),
-	new THREE.MeshNormalMaterial(),
+// Origin axis gizmo — red = +X, green = +Y, blue = +Z (Unity/Godot style).
+const origin = new THREE.Vector3(0, 0, 0);
+const AXIS_LENGTH = 3;
+const HEAD_LENGTH = 1;
+const HEAD_WIDTH = 0.5;
+scene.add(
+	new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), origin, AXIS_LENGTH, 0xff3333, HEAD_LENGTH, HEAD_WIDTH),
+	new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), origin, AXIS_LENGTH, 0x33ff33, HEAD_LENGTH, HEAD_WIDTH),
+	new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), origin, AXIS_LENGTH, 0x3399ff, HEAD_LENGTH, HEAD_WIDTH),
 );
-scene.add(cube);
 
 window.addEventListener('resize', () => {
 	camera.aspect = window.innerWidth / window.innerHeight;
@@ -38,7 +47,5 @@ const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
 	const delta = clock.getDelta();
 	controls.update(delta);
-	cube.rotation.x += 0.01;
-	cube.rotation.y += 0.01;
 	renderer.render(scene, camera);
 });
