@@ -25,6 +25,16 @@ document.body.appendChild(renderer.domElement);
 
 const controls = new CameraController(camera, renderer.domElement);
 
+// Lighting: ambient base + a key directional from above-front so cliff
+// sides catch a different intensity than flat tops and elevation reads.
+scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+keyLight.position.set(1, 1.5, 0.6);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0x99aaff, 0.25);
+fillLight.position.set(-1, 0.5, -0.6);
+scene.add(fillLight);
+
 // Origin axis gizmo — red = +X, green = +Y, blue = +Z (Unity/Godot style).
 const origin = new THREE.Vector3(0, 0, 0);
 const AXIS_LENGTH = 3;
