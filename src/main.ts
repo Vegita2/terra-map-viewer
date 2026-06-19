@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CameraController } from './CameraController';
+import { GameCameraController } from './GameCamera';
 import { setupFolderPicker } from './FolderPicker';
 
 setupFolderPicker();
@@ -25,6 +26,33 @@ document.body.appendChild(renderer.domElement);
 
 const controls = new CameraController(camera, renderer.domElement);
 
+
+const gameControls = new GameCameraController(renderer.domElement);
+gameControls.setSize(window.innerWidth, window.innerHeight);
+
+let useGameCamera = false;
+const cameraButton = document.getElementById('toggle-camera');
+
+function applyCameraMode(): void {
+	controls.setEnabled(!useGameCamera);
+	gameControls.setEnabled(useGameCamera);
+	if (cameraButton) {
+		cameraButton.textContent = useGameCamera ? 'Camera: Game' : 'Camera: Free';
+	}
+}
+
+function toggleCamera(): void {
+	useGameCamera = !useGameCamera;
+	applyCameraMode();
+}
+
+cameraButton?.addEventListener('click', toggleCamera);
+window.addEventListener('keydown', (e) => {
+	// Ignore the shortcut while typing in an input field.
+	if (e.code === 'KeyC' && !(e.target instanceof HTMLInputElement)) toggleCamera();
+});
+applyCameraMode();
+
 // Lighting: ambient base + a key directional from above-front so cliff
 // sides catch a different intensity than flat tops and elevation reads.
 scene.add(new THREE.AmbientLight(0xffffff, 0.45));
@@ -49,6 +77,7 @@ scene.add(
 window.addEventListener('resize', () => {
 	camera.aspect = window.innerWidth / window.innerHeight;
 	camera.updateProjectionMatrix();
+	gameControls.setSize(window.innerWidth, window.innerHeight);
 	renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
@@ -56,6 +85,11 @@ const clock = new THREE.Clock();
 
 renderer.setAnimationLoop(() => {
 	const delta = clock.getDelta();
-	controls.update(delta);
-	renderer.render(scene, camera);
+	if (useGameCamera) {
+		gameControls.update(delta);
+		renderer.render(scene, gameControls.camera);
+	} else {
+		controls.update(delta);
+		renderer.render(scene, camera);
+	}
 });

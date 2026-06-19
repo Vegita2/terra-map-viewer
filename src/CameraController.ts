@@ -19,6 +19,9 @@ export class CameraController {
 	/** Look sensitivity in radians per pixel of mouse movement. */
 	lookSensitivity = 0.002;
 
+	/** Whether input is handled and the camera advances. */
+	enabled = true;
+
 	private readonly keys = new Set<string>();
 	private looking = false;
 	private yaw = 0;
@@ -32,13 +35,13 @@ export class CameraController {
 	private readonly euler = new THREE.Euler(0, 0, 0, 'YXZ');
 
 	private readonly onKeyDown = (e: KeyboardEvent) => {
-		this.keys.add(e.code);
+		if (this.enabled) this.keys.add(e.code);
 	};
 	private readonly onKeyUp = (e: KeyboardEvent) => {
 		this.keys.delete(e.code);
 	};
 	private readonly onMouseDown = (e: MouseEvent) => {
-		if (e.button === 2) {
+		if (this.enabled && e.button === 2) {
 			this.looking = true;
 		}
 	};
@@ -48,7 +51,7 @@ export class CameraController {
 		}
 	};
 	private readonly onMouseMove = (e: MouseEvent) => {
-		if (!this.looking) return;
+		if (!this.enabled || !this.looking) return;
 		this.yaw -= e.movementX * this.lookSensitivity;
 		this.pitch -= e.movementY * this.lookSensitivity;
 		// Clamp pitch to just under straight up/down to avoid flipping.
@@ -77,8 +80,17 @@ export class CameraController {
 		domElement.addEventListener('contextmenu', this.onContextMenu);
 	}
 
+	setEnabled(enabled: boolean): void {
+		this.enabled = enabled;
+		if (!enabled) {
+			this.keys.clear();
+			this.looking = false;
+		}
+	}
+
 	/** Advance the camera based on held keys. Call once per frame. */
 	update(deltaSeconds: number): void {
+		if (!this.enabled) return;
 		const k = this.keys;
 		const moving =
 			k.has('KeyW') || k.has('KeyS') || k.has('KeyA') ||
