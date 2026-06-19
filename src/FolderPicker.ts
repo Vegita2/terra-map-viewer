@@ -10,7 +10,7 @@ const HANDLE_KEY = 'folder';
 const MAPS_PATH = ['terra', 'data', 'maps'];
 
 // Map auto-loaded on page load for quick testing (dotted path, no extension).
-const AUTO_LOAD_MAP = '';
+const AUTO_LOAD_MAP = 'start.east.east-01';
 
 interface MapFile {
 	path: string;
@@ -76,7 +76,7 @@ async function selectFile(file: MapFile): Promise<void> {
 		loadMap(JSON.parse(text))
 	} catch (err) {
 		console.error(`Could not load map ${file.path}`, err);
-	}
+}
 }
 
 // Load the maps directory for a root handle and populate the sidebar.
