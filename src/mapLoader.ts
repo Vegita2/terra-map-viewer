@@ -51,15 +51,47 @@ interface MeshBuf {
 	indices: number[];
 }
 
-// One atlas cell [u0, v0, u1, v1] spans one quad (corners a→b→c→d going round).
+// An atlas cell as [u0, v0, u1, v1] (u0,v0 = the cell's top-left in the image).
 type UVRect = [number, number, number, number];
+// The four corner UVs for one quad, in a→b→c→d vertex order (8 numbers).
+type UVQuad = [number, number, number, number, number, number, number, number];
 
-function pushQuad(out: MeshBuf, a: Vec3, b: Vec3, c: Vec3, d: Vec3, uv: UVRect) {
+// Floor and wall quads wind their corners through different world axes, so each
+// needs its own cell-corner layout to show the texture the same way up. Both
+// keep it upright and un-mirrored (cell top-left = the label/dot corner).
+
+// Floor quad corners are passed NW, SW, SE, NE → TL, BL, BR, TR.
+function floorUV([u0, v0, u1, v1]: UVRect): UVQuad {
+	return [u0, v0, u0, v1, u1, v1, u1, v0];
+}
+// Wall quad corners are passed A-top, B-top, B-bottom, A-bottom → TR, TL, BL, BR,
+// so the cell's top sits at the top of the wall and U runs along its length
+// (mirrored from A→B so the texture reads the same way round as on the floor).
+function wallUV([u0, v0, u1, v1]: UVRect): UVQuad {
+	return [u1, v0, u0, v0, u0, v1, u1, v1];
+}
+
+function pushQuad(out: MeshBuf, a: Vec3, b: Vec3, c: Vec3, d: Vec3, uv: UVQuad) {
 	const base = out.positions.length / 3;
 	out.positions.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2], d[0], d[1], d[2]);
-	const [u0, v0, u1, v1] = uv;
-	out.uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
+	out.uvs.push(uv[0], uv[1], uv[2], uv[3], uv[4], uv[5], uv[6], uv[7]);
 	out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+}
+
+// Stack one textured quad per height unit from `top` down to `floor`, so the
+// tile repeats up the wall instead of being stretched across the whole span.
+// A=(ax,az), B=(bx,bz) are the wall's two vertical edges; winding A→B matches
+// pushQuad's a→b→c→d, so the face points the same way.
+function addWallColumn(
+	out: MeshBuf,
+	ax: number, az: number, bx: number, bz: number,
+	top: number, floor: number, uv: UVRect,
+) {
+	const q = wallUV(uv);
+	for (let hi = top; hi > floor; hi--) {
+		pushQuad(out,
+			[ax, hi, az], [bx, hi, bz], [bx, hi - 1, bz], [ax, hi - 1, az], q);
+	}
 }
 
 // Decode a tile's atlas cell into a 24×16 px UV rect. tiles[i] packs the tile
@@ -93,15 +125,19 @@ function topAt(layer: Layer, x: number, y: number): number {
 	return pz + heightAt(hm, x, y);
 }
 
-// The flat top of a tile — always a full square (SHAPE is ignored for the
-// floor). CCW from +Y so the normal points up.
-function addFloorTile(out: MeshBuf, layer: Layer, x: number, y: number) {
-	const top = topAt(layer, x, y);
+// A full-square floor quad for tile (x,y) at world height `h`. CCW from +Y so
+// the normal points up. Floors are always full quads (SHAPE is ignored here).
+function addFloorQuad(out: MeshBuf, layer: Layer, x: number, y: number, h: number) {
 	const x0 = layer.px + x, x1 = x0 + 1;
 	const z0 = layer.py + y, z1 = z0 + 1;
 	pushQuad(out,
-		[x0, top, z0], [x0, top, z1], [x1, top, z1], [x1, top, z0],
-		tileCellUV(layer.hm, x, y));
+		[x0, h, z0], [x0, h, z1], [x1, h, z1], [x1, h, z0],
+		floorUV(tileCellUV(layer.hm, x, y)));
+}
+
+// The flat top of a tile, at its own height.
+function addFloorTile(out: MeshBuf, layer: Layer, x: number, y: number) {
+	addFloorQuad(out, layer, x, y, topAt(layer, x, y));
 }
 
 // One cardinal cliff side: dx/dy points at the neighbor whose height is the
@@ -130,7 +166,7 @@ function addCardinalWalls(out: MeshBuf, layer: Layer, x: number, y: number) {
 		if (floor >= top || isSideCut(shape, c.side)) continue;
 		const ax = layer.px + x + c.ax, az = layer.py + y + c.az;
 		const bx = layer.px + x + c.bx, bz = layer.py + y + c.bz;
-		pushQuad(out, [ax, top, az], [bx, top, bz], [bx, floor, bz], [ax, floor, az], uv);
+		addWallColumn(out, ax, az, bx, bz, top, floor, uv);
 	}
 }
 
@@ -144,18 +180,23 @@ function addDiagonalWall(out: MeshBuf, layer: Layer, x: number, y: number) {
 	const z0 = layer.py + y, z1 = z0 + 1;
 	const nh = topAt(layer, x, y - 1), sh = topAt(layer, x, y + 1);
 	const wh = topAt(layer, x - 1, y), eh = topAt(layer, x + 1, y);
+	const uv = tileCellUV(layer.hm, x, y);
 
-	let floor: number, va: Vec3, vb: Vec3;
+	// va/vb are the two hypotenuse endpoints in XZ.
+	let floor: number, vax: number, vaz: number, vbx: number, vbz: number;
 	switch (tip) {
-		case 'NW': floor = Math.min(sh, eh); va = [x0, top, z1]; vb = [x1, top, z0]; break;
-		case 'NE': floor = Math.min(sh, wh); va = [x0, top, z0]; vb = [x1, top, z1]; break;
-		case 'SE': floor = Math.min(nh, wh); va = [x1, top, z0]; vb = [x0, top, z1]; break;
-		case 'SW': floor = Math.min(nh, eh); va = [x1, top, z1]; vb = [x0, top, z0]; break;
+		case 'NW': floor = Math.min(sh, eh); vax = x0; vaz = z1; vbx = x1; vbz = z0; break;
+		case 'NE': floor = Math.min(sh, wh); vax = x0; vaz = z0; vbx = x1; vbz = z1; break;
+		case 'SE': floor = Math.min(nh, wh); vax = x1; vaz = z0; vbx = x0; vbz = z1; break;
+		case 'SW': floor = Math.min(nh, eh); vax = x1; vaz = z1; vbx = x0; vbz = z0; break;
 	}
-	if (floor < top) {
-		pushQuad(out, va, [va[0], floor, va[2]], [vb[0], floor, vb[2]], vb,
-			tileCellUV(layer.hm, x, y));
-	}
+	// The diagonal faces opposite a cardinal edge, so feed the endpoints to
+	// addWallColumn in vb→va order to flip the winding outward.
+	addWallColumn(out, vbx, vbz, vax, vaz, top, floor, uv);
+
+	// Floors are full quads, so give the wall's foot a floor tile at the lower
+	// level it drops into (fills the cut-away corner the diagonal carves out).
+	addFloorQuad(out, layer, x, y, floor);
 }
 
 function buildLayerMesh(hm: HeightMap): THREE.Mesh {
