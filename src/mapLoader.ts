@@ -70,6 +70,15 @@ function floorUV([u0, v0, u1, v1]: UVRect): UVQuad {
 function wallUV([u0, v0, u1, v1]: UVRect): UVQuad {
 	return [u1, v0, u0, v0, u0, v1, u1, v1];
 }
+// Diagonal-wall variant: skew the layout into a parallelogram so the texture
+// slants down a tile across the hypotenuse. `dropA` chooses which end falls,
+// so every diagonal can slant toward the same (southern) end regardless of tip.
+function diagWallUV([u0, v0, u1, v1]: UVRect, dropA: boolean): UVQuad {
+	const d = v1 - v0; // shift one cell down
+	return dropA
+		? [u1, v0 + d, u0, v0, u0, v1, u1, v1 + d]
+		: [u1, v0, u0, v0 + d, u0, v1 + d, u1, v1];
+}
 
 function pushQuad(out: MeshBuf, a: Vec3, b: Vec3, c: Vec3, d: Vec3, uv: UVQuad) {
 	const base = out.positions.length / 3;
@@ -85,9 +94,8 @@ function pushQuad(out: MeshBuf, a: Vec3, b: Vec3, c: Vec3, d: Vec3, uv: UVQuad) 
 function addWallColumn(
 	out: MeshBuf,
 	ax: number, az: number, bx: number, bz: number,
-	top: number, floor: number, uv: UVRect,
+	top: number, floor: number, q: UVQuad,
 ) {
-	const q = wallUV(uv);
 	for (let hi = top; hi > floor; hi--) {
 		pushQuad(out,
 			[ax, hi, az], [bx, hi, bz], [bx, hi - 1, bz], [ax, hi - 1, az], q);
@@ -166,7 +174,7 @@ function addCardinalWalls(out: MeshBuf, layer: Layer, x: number, y: number) {
 		if (floor >= top || isSideCut(shape, c.side)) continue;
 		const ax = layer.px + x + c.ax, az = layer.py + y + c.az;
 		const bx = layer.px + x + c.bx, bz = layer.py + y + c.bz;
-		addWallColumn(out, ax, az, bx, bz, top, floor, uv);
+		addWallColumn(out, ax, az, bx, bz, top, floor, wallUV(uv));
 	}
 }
 
@@ -191,8 +199,10 @@ function addDiagonalWall(out: MeshBuf, layer: Layer, x: number, y: number) {
 		case 'SW': floor = Math.min(nh, eh); vax = x1; vaz = z1; vbx = x0; vbz = z0; break;
 	}
 	// The diagonal faces opposite a cardinal edge, so feed the endpoints to
-	// addWallColumn in vb→va order to flip the winding outward.
-	addWallColumn(out, vbx, vbz, vax, vaz, top, floor, uv);
+	// addWallColumn in vb→va order to flip the winding outward. The sheared UVs
+	// (diagWallUV) always slant down toward the southern (larger-z) endpoint, so
+	// every diagonal descends the same way rather than half going up.
+	addWallColumn(out, vbx, vbz, vax, vaz, top, floor, diagWallUV(uv, vbz > vaz));
 
 	// Floors are full quads, so give the wall's foot a floor tile at the lower
 	// level it drops into (fills the cut-away corner the diagonal carves out).
